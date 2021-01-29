@@ -1388,7 +1388,7 @@ void abc_module(RTLIL::Design *design, RTLIL::Module *current_module, std::strin
 
 struct ORACLEPass : public Pass {
 	ORACLEPass() : Pass("lsoracle", "use LSOracle for mixed synthesis with AIG and MIG optimization") { }
-	void help() YS_OVERRIDE
+	void help() override
 	{
 		//   |---v---|---v---|---v---|---v---|---v---|---v---|---v---|---v---|---v---|---v---|
 		log("\n");
@@ -1442,7 +1442,7 @@ struct ORACLEPass : public Pass {
 		log("\n");
 		
 	}
-	void execute(std::vector<std::string> args, RTLIL::Design *design) YS_OVERRIDE
+	void execute(std::vector<std::string> args, RTLIL::Design *design) override
 	{
 		log_header(design, "Executing LSOracle pass (MIG optimization using LSOracle).\n");
 		log_push();
