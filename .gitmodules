@@ -1,6 +1,6 @@
 [submodule "yosys"]
 	path = yosys
-	url = git@github.com:The-OpenROAD-Project/yosys.git
+	url = git@github.com:YosysHQ/yosys.git
 [submodule "LSOracle"]
 	path = LSOracle
 	url = git@github.com:lnis-uofu/LSOracle.git
