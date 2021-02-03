@@ -46,9 +46,9 @@
 #define LSO_COMMAND_PART_EXCLU_AIG "ps -a; partitioning {P}; optimization -a; ps -a "
 #define LSO_COMMAND_PART_EXCLU_MIG "ps -a; partitioning {P}; optimization -m; ps -m; crit_path_stats; ntk_stats "
 #define LSO_COMMAND_PART_DEEP "ps -a; partitioning {P}; optimization -i {D}; ps -m; crit_path_stats; ntk_stats "
-#define LSO_COMMAND_PART_HIGH_EFFORT "ps -a; oracle -d {C}; ps -m; crit_path_stats; ntk_stats "
+#define LSO_COMMAND_PART_HIGH_EFFORT "ps -a; oracle; ps -m; crit_path_stats; ntk_stats "
 #define LSO_COMMAND_PART_DEEP_M "ps -a; partitioning {P}; optimization -i {D} -c; ps -m; crit_path_stats; ntk_stats "
-#define LSO_COMMAND_PART_HIGH_EFFORT_M "ps -a; oracle -d {C} -c; ps -m; crit_path_stats; ntk_stats "
+#define LSO_COMMAND_PART_HIGH_EFFORT_M "ps -a; oracle -c; ps -m; crit_path_stats; ntk_stats "
 
 #include "kernel/register.h"
 #include "kernel/sigtools.h"
@@ -727,8 +727,8 @@ struct abc_output_filter
 	}
 };
 
-void lso_module(RTLIL::Design *design, std::string exe_file, std::string tempdir_name, 
-	bool show_tempdir, std::string num_parts, bool partitioned, bool exclu_part, bool mig, 
+void lso_module(RTLIL::Design *design, std::string exe_file, std::string tempdir_name,
+	bool show_tempdir, std::string num_parts, bool partitioned, bool exclu_part, bool mig,
 	bool deep, bool merge, bool test, bool aig, bool lut){
 
 	std::string lso_script;
@@ -766,11 +766,11 @@ void lso_module(RTLIL::Design *design, std::string exe_file, std::string tempdir
 				else
 					lso_script += LSO_COMMAND_PART_HIGH_EFFORT;
 			}
-			
+
 		}
 
 	}
-	
+
 	if(test){
 		lso_script += !lut ? stringf("write_blif %s/output.blif", tempdir_name.c_str()) : stringf("lut_map -o %s/output.blif", tempdir_name.c_str());
 	}
@@ -788,16 +788,16 @@ void lso_module(RTLIL::Design *design, std::string exe_file, std::string tempdir
 				lso_script += !lut ? stringf("; write_blif -m %s/output.blif", tempdir_name.c_str()) : stringf("; lut_map -m -o %s/output.blif", tempdir_name.c_str());
 		}
 	}
-	
+
 	for (size_t pos = lso_script.find("{P}"); pos != std::string::npos; pos = lso_script.find("{P}", pos))
 		lso_script = lso_script.substr(0, pos) + num_parts + " -c " + config_direc + "../../core/test.ini" + lso_script.substr(pos+3);
-	
+
 	for (size_t pos = lso_script.find("{C}"); pos != std::string::npos; pos = lso_script.find("{C}", pos))
 		lso_script = lso_script.substr(0, pos) + config_direc + "../../core/test.ini" + lso_script.substr(pos+3);
 
 	for (size_t pos = lso_script.find("{D}"); pos != std::string::npos; pos = lso_script.find("{D}", pos))
 		lso_script = lso_script.substr(0, pos) + config_direc + "../../deep_learn_model.json" + lso_script.substr(pos+3);
-	
+
 
 	FILE *f = fopen(stringf("%s/lso.script", tempdir_name.c_str()).c_str(), "wt");
 	fprintf(f, "%s\n", lso_script.c_str());
@@ -817,7 +817,7 @@ void lso_module(RTLIL::Design *design, std::string exe_file, std::string tempdir
 void abc_module(RTLIL::Design *design, RTLIL::Module *current_module, std::string script_file, std::string abcexe_file,std::string lsoexe_file,
 		std::string liberty_file, std::string constr_file, bool cleanup, vector<int> lut_costs, bool dff_mode, std::string clk_str,
 		bool keepff, std::string delay_target, std::string sop_inputs, std::string sop_products, std::string lutin_shared, bool fast_mode,
-		const std::vector<RTLIL::Cell*> &cells, bool show_tempdir, bool sop_mode, bool abc_dress, std::string num_parts, bool partitioned, 
+		const std::vector<RTLIL::Cell*> &cells, bool show_tempdir, bool sop_mode, bool abc_dress, std::string num_parts, bool partitioned,
 		bool exclu_part, bool mig, bool deep, bool merge, bool test, bool aig, bool lut)
 {
 	module = current_module;
@@ -871,7 +871,7 @@ void abc_module(RTLIL::Design *design, RTLIL::Module *current_module, std::strin
 			module->name.c_str(), replace_tempdir(tempdir_name, tempdir_name, show_tempdir).c_str());
 
 	std::string abc_script = stringf("read_blif %s/input.blif; strash; write %s/abc.aig", tempdir_name.c_str(), tempdir_name.c_str());
-	
+
 	abc_script = add_echos_to_abc_cmd(abc_script);
 
 	for (size_t i = 0; i+1 < abc_script.size(); i++)
@@ -1440,7 +1440,7 @@ struct ORACLEPass : public Pass {
 		log("\n");
 		log("        if no -script parameter is given, the following scripts are used:\n");
 		log("\n");
-		
+
 	}
 	void execute(std::vector<std::string> args, RTLIL::Design *design) override
 	{
@@ -1598,8 +1598,8 @@ struct ORACLEPass : public Pass {
 		else{
 			log("Invalid number of arguments\n");
 		}
-		
-		
+
+
 	}
 } MIGPass;
 
