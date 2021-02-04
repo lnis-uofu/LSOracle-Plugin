@@ -862,7 +862,6 @@ void abc_module(RTLIL::Design *design, RTLIL::Module *current_module, std::strin
 	if (dff_mode && clk_sig.empty())
 		log_cmd_error("Clock domain %s not found.\n", clk_str.c_str());
 
-	printf("FUCK\n");
 	std::string tempdir_name = "/tmp/yosys-abc-XXXXXX";
 	if (!cleanup)
 		tempdir_name[0] = tempdir_name[4] = '_';
