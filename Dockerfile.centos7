@@ -1,0 +1,37 @@
+FROM centos:centos7
+ENV YOSYS_DIR=/yosys
+
+RUN yum group install -y "Development Tools" && \
+	yum update -y && \
+	yum install -y centos-release-scl && \
+	yum install -y libffi-devel readline-devel zlib-devel python3-devel tcl-devel tcl tk libstdc++ tk-devel wget devtoolset-8-gcc devtoolset-8-gcc-c++
+
+ENV CC=/opt/rh/devtoolset-8/root/usr/bin/gcc \
+    CPP=/opt/rh/devtoolset-8/root/usr/bin/cpp \
+    CXX=/opt/rh/devtoolset-8/root/usr/bin/g++ \
+    PATH=/opt/rh/devtoolset-8/root/usr/bin:$PATH \
+    LD_LIBRARY_PATH=/opt/rh/devtoolset-8/root/usr/lib64:/opt/rh/devtoolset-8/root/usr/lib:/opt/rh/devtoolset-8/root/usr/lib64/dyninst:/opt/rh/devtoolset-8/root/usr/lib/dyninst:/opt/rh/devtoolset-8/root/usr/lib64:/opt/rh/devtoolset-8/root/usr/lib:$LD_LIBRARY_PATH
+
+RUN wget https://cmake.org/files/v3.14/cmake-3.14.0-Linux-x86_64.sh && \
+    chmod +x cmake-3.14.0-Linux-x86_64.sh  && \
+    ./cmake-3.14.0-Linux-x86_64.sh --skip-license --prefix=/usr/local && rm -rf cmake-3.14.0-Linux-x86_64.sh \
+    && yum clean -y all
+
+RUN wget https://sourceforge.net/projects/boost/files/boost/1.72.0/boost_1_72_0.tar.bz2/download && \
+    tar -xf download && \
+    cd boost_1_72_0 && \
+    ./bootstrap.sh && \
+    ./b2 install --with-program_options -j $(nproc)
+
+RUN mkdir -p /LSOracle/build
+COPY ./LSOracle /LSOracle/
+WORKDIR /LSOracle
+RUN cmake -B build -D CMAKE_BUILD_TYPE=RELEASE . && cmake --build build -j$(nproc)
+
+ENV YOSYS_DIR=/yosys
+COPY yosys /yosys
+RUN mkdir /LSOracle-plugin
+COPY Makefile /LSOracle-plugin/Makefile
+COPY oracle.cc /LSOracle-plugin/oracle.cc
+WORKDIR /LSOracle-plugin
+RUN make
