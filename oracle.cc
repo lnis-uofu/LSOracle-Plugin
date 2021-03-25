@@ -1400,10 +1400,10 @@ struct ORACLEPass : public Pass {
 #ifdef ABCEXTERNAL
 		log("        use the specified command instead of \"" ABCEXTERNAL "\" to execute ABC.\n");
 #else
-		log("        use the specified command instead of \"<yosys-bindir>/yosys-abc\" to execute ABC.\n");
+		log("        use the specified command to execute ABC. If not specified, \"yosys-abc\" from the current PATH will be used\n");
 #endif
 		log("    -lso_exe <command>\n");
-		log("        specify where the LSOracle executable is.\n");
+		log("        specify where the LSOracle executable is. If not specified, \"lsoracle\" from the current PATH will be used.\n");
 		log("\n");
 		log("    -partition <number of partitions>\n");
 		log("        use k-way hypergraph partitioning to partition circuit for optimization of partitions independently.\n");
@@ -1456,7 +1456,7 @@ struct ORACLEPass : public Pass {
 #ifdef ABCEXTERNAL
 		std::string abcexe_file = ABCEXTERNAL;
 #else
-		std::string abcexe_file = proc_self_dirname() + "yosys-abc";
+		std::string abcexe_file = "yosys-abc";
 #endif
 		std::string script_file, liberty_file, constr_file, clk_str;
 		std::string delay_target, sop_inputs, sop_products, lutin_shared = "-S 1";
@@ -1481,7 +1481,7 @@ struct ORACLEPass : public Pass {
 #endif
 #endif
 
-		std::string lsoexe_file = "";
+		std::string lsoexe_file = "lsoracle";
 		size_t argidx;
 		char pwd [PATH_MAX];
 		if (!getcwd(pwd, sizeof(pwd))) {
@@ -1490,109 +1490,107 @@ struct ORACLEPass : public Pass {
 		}
 		std::cout << "checking arguments\n";
 		if(args.size() > 2){
-			if(args[1] != "-lso_exe" || 2 >= args.size()){
-				std::cout << "ERROR\n";
-				log("The executable for LSOracle must be defined\n");
-			}
-			else{
-				std::cout << "Stuff defined correctly\n";
-				lsoexe_file = args[2];
-				for (argidx = 2; argidx < args.size(); argidx++) {
-					std::string arg = args[argidx];
-					if (arg == "-abc_exe" && argidx+1 < args.size()) {
-						abcexe_file = args[++argidx];
-						continue;
+			for (argidx = 1; argidx < args.size(); argidx++) {
+
+				std::string arg = args[argidx];
+				if (arg == "-lso_exe" && argidx+1 < args.size()) {
+					lsoexe_file = args[++argidx];
+					continue;
+				}
+				if (arg == "-abc_exe" && argidx+1 < args.size()) {
+					abcexe_file = args[++argidx];
+					continue;
+				}
+				if (arg == "-script" && argidx+1 < args.size()) {
+					script_file = args[++argidx];
+					rewrite_filename(script_file);
+					if (!script_file.empty() && !is_absolute_path(script_file) && script_file[0] != '+')
+						script_file = std::string(pwd) + "/" + script_file;
+					continue;
+				}
+				if (arg == "-partition" && argidx+1 < args.size()) {
+					num_parts = args[++argidx];
+					partitioned = true;
+					continue;
+				}
+				if (arg == "-exclu_part") {
+					if(!partitioned){
+						log("The circuit must be partitioned for this flag\n");
+						break;
 					}
-					if (arg == "-script" && argidx+1 < args.size()) {
-						script_file = args[++argidx];
-						rewrite_filename(script_file);
-						if (!script_file.empty() && !is_absolute_path(script_file) && script_file[0] != '+')
-							script_file = std::string(pwd) + "/" + script_file;
-						continue;
+					else
+						exclu_part = true;
+					continue;
+				}
+				if (arg == "-deep") {
+					if(!partitioned){
+						log("The circuit must be partitioned for this flag\n");
+						break;
 					}
-					if (arg == "-partition" && argidx+1 < args.size()) {
-						num_parts = args[++argidx];
-						partitioned = true;
-						continue;
-					}
-					if (arg == "-exclu_part") {
-						if(!partitioned){
-							log("The circuit must be partitioned for this flag\n");
-							break;
-						}
-						else
-							exclu_part = true;
-						continue;
-					}
-					if (arg == "-deep") {
-						if(!partitioned){
-							log("The circuit must be partitioned for this flag\n");
-							break;
-						}
-						else{
-							deep = true;
-							continue;
-						}
-					}
-					if (arg == "-merge") {
-						merge = true;
-						continue;
-					}
-					if (arg == "-mig") {
-						mig = true;
-						continue;
-					}
-					if (arg == "-aig") {
-						aig = true;
-						continue;
-					}
-					if (arg == "-lut") {
-						lut = true;
-						continue;
-					}
-					if (arg == "-test") {
-						test = true;
+					else{
+						deep = true;
 						continue;
 					}
 				}
-				extra_args(args, argidx, design);
-
-				for (auto mod : design->selected_modules())
-				{
-					if (mod->processes.size() > 0) {
-						log("Skipping module %s as it contains processes.\n", log_id(mod));
-						continue;
-					}
-
-					assign_map.set(mod);
-					signal_init.clear();
-
-					for (Wire *wire : mod->wires())
-						if (wire->attributes.count("\\init")) {
-							SigSpec initsig = assign_map(wire);
-							Const initval = wire->attributes.at("\\init");
-							for (int i = 0; i < GetSize(initsig) && i < GetSize(initval); i++)
-								switch (initval[i]) {
-									case State::S0:
-										signal_init[initsig[i]] = State::S0;
-										break;
-									case State::S1:
-										signal_init[initsig[i]] = State::S1;
-										break;
-									default:
-										break;
-								}
-						}
-
-					std::cout << "lsoexe_file = " << lsoexe_file << "\n";
-					if (!dff_mode || !clk_str.empty()) {
-						abc_module(design, mod, script_file, abcexe_file, lsoexe_file, liberty_file, constr_file, cleanup, lut_costs, dff_mode, clk_str, keepff,
-								delay_target, sop_inputs, sop_products, lutin_shared, fast_mode, mod->selected_cells(), show_tempdir, sop_mode, abc_dress,
-								num_parts, partitioned, exclu_part, mig, deep, merge, test, aig, lut);
-						continue;
-					}
+				if (arg == "-merge") {
+					merge = true;
+					continue;
+				}
+				if (arg == "-mig") {
+					mig = true;
+					continue;
+				}
+				if (arg == "-aig") {
+					aig = true;
+					continue;
+				}
+				if (arg == "-lut") {
+					lut = true;
+					continue;
+				}
+				if (arg == "-test") {
+					test = true;
+					continue;
 				}
 			}
+			extra_args(args, argidx, design);
+
+			for (auto mod : design->selected_modules())
+			{
+				if (mod->processes.size() > 0) {
+					log("Skipping module %s as it contains processes.\n", log_id(mod));
+					continue;
+				}
+
+				assign_map.set(mod);
+				signal_init.clear();
+
+				for (Wire *wire : mod->wires())
+					if (wire->attributes.count("\\init")) {
+						SigSpec initsig = assign_map(wire);
+						Const initval = wire->attributes.at("\\init");
+						for (int i = 0; i < GetSize(initsig) && i < GetSize(initval); i++)
+							switch (initval[i]) {
+								case State::S0:
+									signal_init[initsig[i]] = State::S0;
+									break;
+								case State::S1:
+									signal_init[initsig[i]] = State::S1;
+									break;
+								default:
+									break;
+							}
+					}
+
+				std::cout << "lsoexe_file = " << lsoexe_file << "\n";
+				if (!dff_mode || !clk_str.empty()) {
+					abc_module(design, mod, script_file, abcexe_file, lsoexe_file, liberty_file, constr_file, cleanup, lut_costs, dff_mode, clk_str, keepff,
+							delay_target, sop_inputs, sop_products, lutin_shared, fast_mode, mod->selected_cells(), show_tempdir, sop_mode, abc_dress,
+							num_parts, partitioned, exclu_part, mig, deep, merge, test, aig, lut);
+					continue;
+				}
+			}
+
 		}
 		else{
 			log("Invalid number of arguments\n");
