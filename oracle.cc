@@ -46,9 +46,9 @@
 #define LSO_COMMAND_PART_EXCLU_AIG "ps -a; partitioning {P}; optimization -a; ps -a "
 #define LSO_COMMAND_PART_EXCLU_MIG "ps -a; partitioning {P}; optimization -m; ps -m; crit_path_stats; ntk_stats "
 #define LSO_COMMAND_PART_DEEP "ps -a; partitioning {P}; optimization -i {D}; ps -m; crit_path_stats; ntk_stats "
-#define LSO_COMMAND_PART_HIGH_EFFORT "ps -a; oracle -d {C}; ps -m; crit_path_stats; ntk_stats "
+#define LSO_COMMAND_PART_HIGH_EFFORT "ps -a; oracle; ps -m; crit_path_stats; ntk_stats "
 #define LSO_COMMAND_PART_DEEP_M "ps -a; partitioning {P}; optimization -i {D} -c; ps -m; crit_path_stats; ntk_stats "
-#define LSO_COMMAND_PART_HIGH_EFFORT_M "ps -a; oracle -d {C} -c; ps -m; crit_path_stats; ntk_stats "
+#define LSO_COMMAND_PART_HIGH_EFFORT_M "ps -a; oracle -c; ps -m; crit_path_stats; ntk_stats "
 
 #include "kernel/register.h"
 #include "kernel/sigtools.h"
@@ -727,8 +727,8 @@ struct abc_output_filter
 	}
 };
 
-void lso_module(RTLIL::Design *design, std::string exe_file, std::string tempdir_name, 
-	bool show_tempdir, std::string num_parts, bool partitioned, bool exclu_part, bool mig, 
+void lso_module(RTLIL::Design *design, std::string exe_file, std::string tempdir_name,
+	bool show_tempdir, std::string num_parts, bool partitioned, bool exclu_part, bool mig,
 	bool deep, bool merge, bool test, bool aig, bool lut){
 
 	std::string lso_script;
@@ -766,11 +766,11 @@ void lso_module(RTLIL::Design *design, std::string exe_file, std::string tempdir
 				else
 					lso_script += LSO_COMMAND_PART_HIGH_EFFORT;
 			}
-			
+
 		}
 
 	}
-	
+
 	if(test){
 		lso_script += !lut ? stringf("write_blif %s/output.blif", tempdir_name.c_str()) : stringf("lut_map -o %s/output.blif", tempdir_name.c_str());
 	}
@@ -788,16 +788,16 @@ void lso_module(RTLIL::Design *design, std::string exe_file, std::string tempdir
 				lso_script += !lut ? stringf("; write_blif -m %s/output.blif", tempdir_name.c_str()) : stringf("; lut_map -m -o %s/output.blif", tempdir_name.c_str());
 		}
 	}
-	
+
 	for (size_t pos = lso_script.find("{P}"); pos != std::string::npos; pos = lso_script.find("{P}", pos))
 		lso_script = lso_script.substr(0, pos) + num_parts + " -c " + config_direc + "../../core/test.ini" + lso_script.substr(pos+3);
-	
+
 	for (size_t pos = lso_script.find("{C}"); pos != std::string::npos; pos = lso_script.find("{C}", pos))
 		lso_script = lso_script.substr(0, pos) + config_direc + "../../core/test.ini" + lso_script.substr(pos+3);
 
 	for (size_t pos = lso_script.find("{D}"); pos != std::string::npos; pos = lso_script.find("{D}", pos))
 		lso_script = lso_script.substr(0, pos) + config_direc + "../../deep_learn_model.json" + lso_script.substr(pos+3);
-	
+
 
 	FILE *f = fopen(stringf("%s/lso.script", tempdir_name.c_str()).c_str(), "wt");
 	fprintf(f, "%s\n", lso_script.c_str());
@@ -817,7 +817,7 @@ void lso_module(RTLIL::Design *design, std::string exe_file, std::string tempdir
 void abc_module(RTLIL::Design *design, RTLIL::Module *current_module, std::string script_file, std::string abcexe_file,std::string lsoexe_file,
 		std::string liberty_file, std::string constr_file, bool cleanup, vector<int> lut_costs, bool dff_mode, std::string clk_str,
 		bool keepff, std::string delay_target, std::string sop_inputs, std::string sop_products, std::string lutin_shared, bool fast_mode,
-		const std::vector<RTLIL::Cell*> &cells, bool show_tempdir, bool sop_mode, bool abc_dress, std::string num_parts, bool partitioned, 
+		const std::vector<RTLIL::Cell*> &cells, bool show_tempdir, bool sop_mode, bool abc_dress, std::string num_parts, bool partitioned,
 		bool exclu_part, bool mig, bool deep, bool merge, bool test, bool aig, bool lut)
 {
 	module = current_module;
@@ -862,7 +862,6 @@ void abc_module(RTLIL::Design *design, RTLIL::Module *current_module, std::strin
 	if (dff_mode && clk_sig.empty())
 		log_cmd_error("Clock domain %s not found.\n", clk_str.c_str());
 
-	printf("FUCK\n");
 	std::string tempdir_name = "/tmp/yosys-abc-XXXXXX";
 	if (!cleanup)
 		tempdir_name[0] = tempdir_name[4] = '_';
@@ -871,7 +870,7 @@ void abc_module(RTLIL::Design *design, RTLIL::Module *current_module, std::strin
 			module->name.c_str(), replace_tempdir(tempdir_name, tempdir_name, show_tempdir).c_str());
 
 	std::string abc_script = stringf("read_blif %s/input.blif; strash; write %s/abc.aig", tempdir_name.c_str(), tempdir_name.c_str());
-	
+
 	abc_script = add_echos_to_abc_cmd(abc_script);
 
 	for (size_t i = 0; i+1 < abc_script.size(); i++)
@@ -1401,10 +1400,10 @@ struct ORACLEPass : public Pass {
 #ifdef ABCEXTERNAL
 		log("        use the specified command instead of \"" ABCEXTERNAL "\" to execute ABC.\n");
 #else
-		log("        use the specified command instead of \"<yosys-bindir>/yosys-abc\" to execute ABC.\n");
+		log("        use the specified command to execute ABC. If not specified, \"yosys-abc\" from the current PATH will be used\n");
 #endif
 		log("    -lso_exe <command>\n");
-		log("        specify where the LSOracle executable is.\n");
+		log("        specify where the LSOracle executable is. If not specified, \"lsoracle\" from the current PATH will be used.\n");
 		log("\n");
 		log("    -partition <number of partitions>\n");
 		log("        use k-way hypergraph partitioning to partition circuit for optimization of partitions independently.\n");
@@ -1440,7 +1439,7 @@ struct ORACLEPass : public Pass {
 		log("\n");
 		log("        if no -script parameter is given, the following scripts are used:\n");
 		log("\n");
-		
+
 	}
 	void execute(std::vector<std::string> args, RTLIL::Design *design) override
 	{
@@ -1457,7 +1456,7 @@ struct ORACLEPass : public Pass {
 #ifdef ABCEXTERNAL
 		std::string abcexe_file = ABCEXTERNAL;
 #else
-		std::string abcexe_file = proc_self_dirname() + "yosys-abc";
+		std::string abcexe_file = "yosys-abc";
 #endif
 		std::string script_file, liberty_file, constr_file, clk_str;
 		std::string delay_target, sop_inputs, sop_products, lutin_shared = "-S 1";
@@ -1482,7 +1481,7 @@ struct ORACLEPass : public Pass {
 #endif
 #endif
 
-		std::string lsoexe_file = "";
+		std::string lsoexe_file = "lsoracle";
 		size_t argidx;
 		char pwd [PATH_MAX];
 		if (!getcwd(pwd, sizeof(pwd))) {
@@ -1491,115 +1490,113 @@ struct ORACLEPass : public Pass {
 		}
 		std::cout << "checking arguments\n";
 		if(args.size() > 2){
-			if(args[1] != "-lso_exe" || 2 >= args.size()){
-				std::cout << "ERROR\n";
-				log("The executable for LSOracle must be defined\n");
-			}
-			else{
-				std::cout << "Stuff defined correctly\n";
-				lsoexe_file = args[2];
-				for (argidx = 2; argidx < args.size(); argidx++) {
-					std::string arg = args[argidx];
-					if (arg == "-abc_exe" && argidx+1 < args.size()) {
-						abcexe_file = args[++argidx];
-						continue;
+			for (argidx = 1; argidx < args.size(); argidx++) {
+
+				std::string arg = args[argidx];
+				if (arg == "-lso_exe" && argidx+1 < args.size()) {
+					lsoexe_file = args[++argidx];
+					continue;
+				}
+				if (arg == "-abc_exe" && argidx+1 < args.size()) {
+					abcexe_file = args[++argidx];
+					continue;
+				}
+				if (arg == "-script" && argidx+1 < args.size()) {
+					script_file = args[++argidx];
+					rewrite_filename(script_file);
+					if (!script_file.empty() && !is_absolute_path(script_file) && script_file[0] != '+')
+						script_file = std::string(pwd) + "/" + script_file;
+					continue;
+				}
+				if (arg == "-partition" && argidx+1 < args.size()) {
+					num_parts = args[++argidx];
+					partitioned = true;
+					continue;
+				}
+				if (arg == "-exclu_part") {
+					if(!partitioned){
+						log("The circuit must be partitioned for this flag\n");
+						break;
 					}
-					if (arg == "-script" && argidx+1 < args.size()) {
-						script_file = args[++argidx];
-						rewrite_filename(script_file);
-						if (!script_file.empty() && !is_absolute_path(script_file) && script_file[0] != '+')
-							script_file = std::string(pwd) + "/" + script_file;
-						continue;
+					else
+						exclu_part = true;
+					continue;
+				}
+				if (arg == "-deep") {
+					if(!partitioned){
+						log("The circuit must be partitioned for this flag\n");
+						break;
 					}
-					if (arg == "-partition" && argidx+1 < args.size()) {
-						num_parts = args[++argidx];
-						partitioned = true;
-						continue;
-					}
-					if (arg == "-exclu_part") {
-						if(!partitioned){
-							log("The circuit must be partitioned for this flag\n");
-							break;
-						}
-						else
-							exclu_part = true;
-						continue;
-					}
-					if (arg == "-deep") {
-						if(!partitioned){
-							log("The circuit must be partitioned for this flag\n");
-							break;
-						}
-						else{
-							deep = true;
-							continue;
-						}
-					}
-					if (arg == "-merge") {
-						merge = true;
-						continue;
-					}
-					if (arg == "-mig") {
-						mig = true;
-						continue;
-					}
-					if (arg == "-aig") {
-						aig = true;
-						continue;
-					}
-					if (arg == "-lut") {
-						lut = true;
-						continue;
-					}
-					if (arg == "-test") {
-						test = true;
+					else{
+						deep = true;
 						continue;
 					}
 				}
-				extra_args(args, argidx, design);
-
-				for (auto mod : design->selected_modules())
-				{
-					if (mod->processes.size() > 0) {
-						log("Skipping module %s as it contains processes.\n", log_id(mod));
-						continue;
-					}
-
-					assign_map.set(mod);
-					signal_init.clear();
-
-					for (Wire *wire : mod->wires())
-						if (wire->attributes.count("\\init")) {
-							SigSpec initsig = assign_map(wire);
-							Const initval = wire->attributes.at("\\init");
-							for (int i = 0; i < GetSize(initsig) && i < GetSize(initval); i++)
-								switch (initval[i]) {
-									case State::S0:
-										signal_init[initsig[i]] = State::S0;
-										break;
-									case State::S1:
-										signal_init[initsig[i]] = State::S1;
-										break;
-									default:
-										break;
-								}
-						}
-
-					std::cout << "lsoexe_file = " << lsoexe_file << "\n";
-					if (!dff_mode || !clk_str.empty()) {
-						abc_module(design, mod, script_file, abcexe_file, lsoexe_file, liberty_file, constr_file, cleanup, lut_costs, dff_mode, clk_str, keepff,
-								delay_target, sop_inputs, sop_products, lutin_shared, fast_mode, mod->selected_cells(), show_tempdir, sop_mode, abc_dress,
-								num_parts, partitioned, exclu_part, mig, deep, merge, test, aig, lut);
-						continue;
-					}
+				if (arg == "-merge") {
+					merge = true;
+					continue;
+				}
+				if (arg == "-mig") {
+					mig = true;
+					continue;
+				}
+				if (arg == "-aig") {
+					aig = true;
+					continue;
+				}
+				if (arg == "-lut") {
+					lut = true;
+					continue;
+				}
+				if (arg == "-test") {
+					test = true;
+					continue;
 				}
 			}
+			extra_args(args, argidx, design);
+
+			for (auto mod : design->selected_modules())
+			{
+				if (mod->processes.size() > 0) {
+					log("Skipping module %s as it contains processes.\n", log_id(mod));
+					continue;
+				}
+
+				assign_map.set(mod);
+				signal_init.clear();
+
+				for (Wire *wire : mod->wires())
+					if (wire->attributes.count("\\init")) {
+						SigSpec initsig = assign_map(wire);
+						Const initval = wire->attributes.at("\\init");
+						for (int i = 0; i < GetSize(initsig) && i < GetSize(initval); i++)
+							switch (initval[i]) {
+								case State::S0:
+									signal_init[initsig[i]] = State::S0;
+									break;
+								case State::S1:
+									signal_init[initsig[i]] = State::S1;
+									break;
+								default:
+									break;
+							}
+					}
+
+				std::cout << "lsoexe_file = " << lsoexe_file << "\n";
+				if (!dff_mode || !clk_str.empty()) {
+					abc_module(design, mod, script_file, abcexe_file, lsoexe_file, liberty_file, constr_file, cleanup, lut_costs, dff_mode, clk_str, keepff,
+							delay_target, sop_inputs, sop_products, lutin_shared, fast_mode, mod->selected_cells(), show_tempdir, sop_mode, abc_dress,
+							num_parts, partitioned, exclu_part, mig, deep, merge, test, aig, lut);
+					continue;
+				}
+			}
+
 		}
 		else{
 			log("Invalid number of arguments\n");
 		}
-		
-		
+
+
 	}
 } MIGPass;
 
