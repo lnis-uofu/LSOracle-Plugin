@@ -727,20 +727,31 @@ struct abc_output_filter
 	}
 };
 
-void lso_module(RTLIL::Design *design, std::string exe_file, std::string tempdir_name,
-	bool show_tempdir, std::string num_parts, bool partitioned, bool exclu_part, bool mig,
-	bool deep, bool merge, bool test, bool aig, bool lut){
+std::string prepend_script_file(std::string script_file, std::string input_file, std::string output_file)
+{
+	std::ifstream script;
+	script.open(script_file);
+	std::stringstream lso_script;
+	lso_script << stringf("read %s; ", input_file.c_str());
+	lso_script << script.rdbuf();
+	lso_script << stringf("write_blif %s", output_file.c_str());
+	return lso_script.str();
+}
+
+std::string generate_lso_script(std::string exe_file, std::string input_aig_file, std::string output_blif_file,
+			std::string num_parts, bool partitioned, bool exclu_part, bool mig,
+			bool deep, bool merge, bool test, bool aig, bool lut)
+{
 
 	std::string lso_script;
 
 	std::string config_direc = exe_file;
-	size_t pos = std::string::npos;
 	config_direc.erase(config_direc.begin() + config_direc.find("lsoracle"), config_direc.end());
 
 	if(!partitioned)
-		lso_script += mig ? stringf("read -m %s/abc.aig; ", tempdir_name.c_str()) : stringf("read %s/abc.aig; ", tempdir_name.c_str());
+		lso_script += mig ? stringf("read -m %s; ", input_aig_file.c_str()) : stringf("read %s; ", input_aig_file.c_str());
 	else
-		lso_script += stringf("read %s/abc.aig; ", tempdir_name.c_str());
+		lso_script += stringf("read %s; ", input_aig_file.c_str());
 
 	//Conversion from RTLIL to AIG readable by LSOracle
 	if(!test){
@@ -772,20 +783,20 @@ void lso_module(RTLIL::Design *design, std::string exe_file, std::string tempdir
 	}
 
 	if(test){
-		lso_script += !lut ? stringf("write_blif %s/output.blif", tempdir_name.c_str()) : stringf("lut_map -o %s/output.blif", tempdir_name.c_str());
+		lso_script += !lut ? stringf("write_blif %s", output_blif_file.c_str()) : stringf("lut_map -o %s", output_blif_file.c_str());
 	}
 	else{
 		if(!partitioned){
 			if(aig)
-				lso_script += !lut ? stringf("; write_blif %s/output.blif", tempdir_name.c_str()) : stringf("; lut_map -o %s/output.blif", tempdir_name.c_str());
+				lso_script += !lut ? stringf("; write_blif %s", output_blif_file.c_str()) : stringf("; lut_map -o %s", output_blif_file.c_str());
 			else
-				lso_script += !lut ? stringf("; write_blif -m %s/output.blif", tempdir_name.c_str()) : stringf("; lut_map -m -o %s/output.blif", tempdir_name.c_str());
+				lso_script += !lut ? stringf("; write_blif -m %s", output_blif_file.c_str()) : stringf("; lut_map -m -o %s", output_blif_file.c_str());
 		}
 		else{
 			if(aig)
-				lso_script += !lut ? stringf("; write_blif %s/output.blif", tempdir_name.c_str()) : stringf("; lut_map -o %s/output.blif", tempdir_name.c_str());
+				lso_script += !lut ? stringf("; write_blif %s", output_blif_file.c_str()) : stringf("; lut_map -o %s", output_blif_file.c_str());
 			else
-				lso_script += !lut ? stringf("; write_blif -m %s/output.blif", tempdir_name.c_str()) : stringf("; lut_map -m -o %s/output.blif", tempdir_name.c_str());
+				lso_script += !lut ? stringf("; write_blif -m %s", output_blif_file.c_str()) : stringf("; lut_map -m -o %s", output_blif_file.c_str());
 		}
 	}
 
@@ -797,21 +808,28 @@ void lso_module(RTLIL::Design *design, std::string exe_file, std::string tempdir
 
 	for (size_t pos = lso_script.find("{D}"); pos != std::string::npos; pos = lso_script.find("{D}", pos))
 		lso_script = lso_script.substr(0, pos) + config_direc + "../../deep_learn_model.json" + lso_script.substr(pos+3);
+	return lso_script;
+}
 
-
-	FILE *f = fopen(stringf("%s/lso.script", tempdir_name.c_str()).c_str(), "wt");
+std::string write_lso_script(std::string lso_script, std::string tempdir_name )
+{
+	log("LSOracle script: %s\n", lso_script.c_str());
+	std::string filename = stringf("%s/lso.script", tempdir_name.c_str());
+	FILE *f = fopen(filename.c_str(), "wt");
 	fprintf(f, "%s\n", lso_script.c_str());
 	fclose(f);
+	return filename;
+}
 
-	std::string buffer = stringf("%s -f %s/lso.script 2>&1", exe_file.c_str(), tempdir_name.c_str());
+void lso_module(std::string exe_file, std::string tempdir_name, bool show_tempdir, std::string filename)
+{
+	std::string buffer = stringf("%s -f %s 2>&1", exe_file.c_str(), filename.c_str());
 	log("Running LSOracle command: %s\n", replace_tempdir(buffer, tempdir_name, show_tempdir).c_str());
-	log("LSOracle script: %s\n", lso_script.c_str());
 	lso_output_filter filt(tempdir_name, show_tempdir);
 	int ret = run_command(buffer, std::bind(&lso_output_filter::next_line, filt, std::placeholders::_1));
 
 	if (ret != 0)
 		log_error("LSOracle: execution of command \"%s\" failed: return code %d.\n", buffer.c_str(), ret);
-
 }
 
 void abc_module(RTLIL::Design *design, RTLIL::Module *current_module, std::string script_file, std::string abcexe_file,std::string lsoexe_file,
@@ -866,10 +884,16 @@ void abc_module(RTLIL::Design *design, RTLIL::Module *current_module, std::strin
 	if (!cleanup)
 		tempdir_name[0] = tempdir_name[4] = '_';
 	tempdir_name = make_temp_dir(tempdir_name);
+
+	std::string blif_input_file = tempdir_name + "/input.blif";
+	std::string aiger_temp_file = tempdir_name + "/abc.aig";
+	std::string tmp_script_name = tempdir_name + "/abc.script";
+	std::string blif_output_file = tempdir_name + "/output.blif";
+
 	log_header(design, "Extracting gate netlist of module `%s' to `%s/input.blif'..\n",
 			module->name.c_str(), replace_tempdir(tempdir_name, tempdir_name, show_tempdir).c_str());
 
-	std::string abc_script = stringf("read_blif %s/input.blif; strash; write %s/abc.aig", tempdir_name.c_str(), tempdir_name.c_str());
+	std::string abc_script = stringf("read_blif %s; strash; write %s", blif_input_file.c_str(), aiger_temp_file.c_str());
 
 	abc_script = add_echos_to_abc_cmd(abc_script);
 
@@ -877,7 +901,7 @@ void abc_module(RTLIL::Design *design, RTLIL::Module *current_module, std::strin
 		if (abc_script[i] == ';' && abc_script[i+1] == ' ')
 			abc_script[i+1] = '\n';
 
-	FILE *f = fopen(stringf("%s/abc.script", tempdir_name.c_str()).c_str(), "wt");
+	FILE *f = fopen(tmp_script_name.c_str(), "wt");
 	fprintf(f, "%s\n", abc_script.c_str());
 	fclose(f);
 
@@ -913,10 +937,9 @@ void abc_module(RTLIL::Design *design, RTLIL::Module *current_module, std::strin
 
 	handle_loops();
 
-	std::string buffer = stringf("%s/input.blif", tempdir_name.c_str());
-	f = fopen(buffer.c_str(), "wt");
+	f = fopen(blif_input_file.c_str(), "wt");
 	if (f == NULL)
-		log_error("Opening %s for writing failed: %s\n", buffer.c_str(), strerror(errno));
+		log_error("Opening %s for writing failed: %s\n", blif_input_file.c_str(), strerror(errno));
 
 	fprintf(f, ".model netlist\n");
 
@@ -1034,16 +1057,16 @@ void abc_module(RTLIL::Design *design, RTLIL::Module *current_module, std::strin
 	{
 		log_header(design, "Executing ABC.\n");
 
-		buffer = stringf("%s -s -f %s/abc.script 2>&1", abcexe_file.c_str(), tempdir_name.c_str());
-		log("Running ABC command: %s\n", replace_tempdir(buffer, tempdir_name, show_tempdir).c_str());
+		std::string abc_command = stringf("%s -s -f %s 2>&1", abcexe_file.c_str(), tmp_script_name.c_str());
+		log("Running ABC command: %s\n", replace_tempdir(abc_command, tempdir_name, show_tempdir).c_str());
 
 #ifndef YOSYS_LINK_ABC
 		abc_output_filter filt(tempdir_name, show_tempdir);
-		int ret = run_command(buffer, std::bind(&abc_output_filter::next_line, filt, std::placeholders::_1));
+		int ret = run_command(abc_command, std::bind(&abc_output_filter::next_line, filt, std::placeholders::_1));
 #else
 		// These needs to be mutable, supposedly due to getopt
 		char *abc_argv[5];
-		string tmp_script_name = stringf("%s/abc.script", tempdir_name.c_str());
+
 		abc_argv[0] = strdup(abcexe_file.c_str());
 		abc_argv[1] = strdup("-s");
 		abc_argv[2] = strdup("-f");
@@ -1056,26 +1079,35 @@ void abc_module(RTLIL::Design *design, RTLIL::Module *current_module, std::strin
 		free(abc_argv[3]);
 #endif
 		if (ret != 0)
-			log_error("ABC: execution of command \"%s\" failed: return code %d.\n", buffer.c_str(), ret);
+			log_error("ABC: execution of command \"%s\" failed: return code %d.\n", abc_command.c_str(), ret);
 
-		buffer = stringf("%s/%s", tempdir_name.c_str(), "abc.aig");
 		std::ifstream ifs;
-		ifs.open(buffer);
+		ifs.open(aiger_temp_file);
 		if (ifs.fail())
-			log_error("Can't open ABC output file `%s'.\n", buffer.c_str());
+			log_error("Can't open ABC output file `%s'.\n", aiger_temp_file.c_str());
 
-		lso_module(design, lsoexe_file, tempdir_name, show_tempdir, num_parts, partitioned, exclu_part, mig, deep, merge, test, aig, lut);
+		std::string lso_script;
+		if (script_file == "") {
+		// TODO pass temp filenames
+			lso_script = generate_lso_script(lsoexe_file, aiger_temp_file, blif_output_file, num_parts,
+							partitioned, exclu_part, mig, deep, merge, test, aig, lut);
 
-		buffer = stringf("%s/%s", tempdir_name.c_str(), "output.blif");
-		printf("%s\n", buffer.c_str());
+		} else {
+			lso_script = prepend_script_file(script_file, aiger_temp_file, blif_output_file);
+		}
+		std::string script = write_lso_script(lso_script, tempdir_name);
+
+		lso_module(lsoexe_file, tempdir_name, show_tempdir, script);
+
+		printf("%s\n", blif_output_file.c_str());
 		std::ifstream ifs_lso;
-		ifs_lso.open(buffer);
+		ifs_lso.open(blif_output_file);
 		if (ifs_lso.fail())
-			log_error("Can't open LSOracle output file `%s'.\n", buffer.c_str());
+			log_error("Can't open LSOracle output file `%s'.\n", blif_output_file.c_str());
 
 		printf("Finished LSO\n");
 
-		std::string cec_script = stringf("cec %s/abc.aig %s/output.blif", tempdir_name.c_str(), tempdir_name.c_str());
+		std::string cec_script = stringf("cec %s %s", aiger_temp_file.c_str(), blif_output_file.c_str());
 		cec_script = add_echos_to_abc_cmd(cec_script);
 
 		for (size_t i = 0; i+1 < cec_script.size(); i++)
@@ -1108,7 +1140,7 @@ void abc_module(RTLIL::Design *design, RTLIL::Module *current_module, std::strin
 				free(abc_argv[3]);
 		#endif
 				if (ret != 0)
-					log_error("ABC: execution of command \"%s\" failed: return code %d.\n", buffer.c_str(), ret);
+					log_error("ABC: execution of command \"%s\" failed: return code %d.\n", cec_buffer.c_str(), ret);
 
 		printf("Verification complete\n");
 
@@ -1431,12 +1463,6 @@ struct ORACLEPass : public Pass {
 		log("\n");
 		log("    -script <file>\n");
 		log("        use the specified LSOracle script file instead of the default script.\n");
-		log("\n");
-		log("        if <file> starts with a plus sign (+), then the rest of the filename\n");
-		log("        string is interpreted as the command string to be passed to LSOracle. The\n");
-		log("        leading plus sign is removed and all commas (,) in the string are\n");
-		log("        replaced with blanks before the string is passed to LSOracle.\n");
-		log("\n");
 		log("        if no -script parameter is given, the following scripts are used:\n");
 		log("\n");
 
